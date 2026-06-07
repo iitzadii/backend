@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import google.generativeai as genai
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -77,90 +76,6 @@ def recommend_careers_algo(answers, careers, limit=10):
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored[:limit]
 
-def recommend_careers_gemini(answers, careers, api_key, limit=10):
-    try:
-        genai.configure(api_key=api_key)
-        
-        # Prepare careers summary for model context to keep token usage minimal
-        careers_summary = []
-        for c in careers:
-            careers_summary.append({
-                "id": c["id"],
-                "title": c["title"],
-                "category": c["category"],
-                "skills": c["skills"],
-                "interests": c["interests"],
-                "personality": c["personality"],
-                "qualifications": c["qualifications"],
-                "streams": c["streams"]
-            })
-            
-        prompt = f"""
-You are an expert Career Counsellor. Analyze the user's career quiz responses and suggest the best matches from our predefined career catalog.
-
-USER ANSWERS:
-- Current Qualification: {answers.get('qualification', 'None')}
-- Stream Interests: {answers.get('stream', 'None')}
-- User's Skills: {', '.join(answers.get('skills', []))}
-- User's Interests: {', '.join(answers.get('interests', []))}
-- User's Personality Traits: {', '.join(answers.get('personality', []))}
-
-AVAILABLE PREDEFINED CATALOG:
-{json.dumps(careers_summary, indent=2)}
-
-INSTRUCTIONS:
-1. Select the top career matches (up to {limit}) from the catalog list ONLY. Do not invent any new career ID.
-2. For each recommendation:
-   - Provide the EXACT 'id' from the catalog.
-   - Calculate a match percentage (integer 1 to 100) indicating how well it fits.
-   - Provide 2 or 3 short, personalized, highly engaging sentences as reasons (reason strings in an array) why this career matches their specific answers. Refer to their chosen skills/interests directly in the reasons to make it personalized.
-3. Return the results as a JSON list matching the schema exactly.
-
-Example output:
-[
-  {{
-    "id": "software-engineer",
-    "matchPercent": 95,
-    "reasons": [
-      "Your programming skill and logical interests match perfectly with software engineering.",
-      "As an analytical personality type, you will enjoy solving complex software problems."
-    ]
-  }}
-]
-"""
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        
-        raw_json = response.text.strip()
-        data = json.loads(raw_json)
-        
-        recs = []
-        for item in data:
-            c_id = item.get("id")
-            if c_id in CAREER_MAP:
-                recs.append({
-                    "career": CAREER_MAP[c_id],
-                    "score": item.get("matchPercent", 50), # Use matchPercent as score rank
-                    "matchPercent": item.get("matchPercent", 50),
-                    "reasons": item.get("reasons", ["Matches your profile"])
-                })
-        
-        # Sort just in case
-        recs.sort(key=lambda x: x["matchPercent"], reverse=True)
-        return recs[:limit]
-        
-    except Exception as e:
-        logger.error(f"Gemini recommendations failed: {e}. Falling back to algorithm.")
-        return recommend_careers_algo(answers, careers, limit)
-
 def recommend_careers(answers, limit=10):
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        logger.info("Generating AI recommendations using Gemini API")
-        return recommend_careers_gemini(answers, ALL_CAREERS, api_key, limit)
-    else:
-        logger.info("Generating algorithmic recommendations (local)")
-        return recommend_careers_algo(answers, ALL_CAREERS, limit)
+    logger.info("Generating algorithmic recommendations (local)")
+    return recommend_careers_algo(answers, ALL_CAREERS, limit)
